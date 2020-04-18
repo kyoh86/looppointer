@@ -9,5 +9,6 @@ import (
 
 func Test(t *testing.T) {
 	testdata := analysistest.TestData()
-	analysistest.Run(t, testdata, looppointer.Analyzer, "a")
+	analysistest.Run(t, testdata, looppointer.Analyzer, "simple")
+	analysistest.Run(t, testdata, looppointer.Analyzer, "fixed")
 }
