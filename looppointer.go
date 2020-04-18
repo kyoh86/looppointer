@@ -26,142 +26,243 @@ func init() {
 func run(pass *analysis.Pass) (interface{}, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	search := &Searcher{
+		Stats: map[token.Pos]struct{}{},
+		Vars:  map[token.Pos]map[token.Pos]struct{}{},
+	}
+
 	nodeFilter := []ast.Node{
 		(*ast.RangeStmt)(nil),
 		(*ast.ForStmt)(nil),
+		(*ast.DeclStmt)(nil),
+		(*ast.AssignStmt)(nil),
+		(*ast.UnaryExpr)(nil),
 	}
-	inspect.Preorder(nodeFilter, func(n ast.Node) {
-		// Find the variables updated by the loop statement.
-		var vars []*ast.Ident
-		addVar := func(expr ast.Expr) {
-			if id, ok := expr.(*ast.Ident); ok {
-				vars = append(vars, id)
-			}
-		}
-		var body *ast.BlockStmt
-		switch n := n.(type) {
-		case *ast.RangeStmt:
-			body = n.Body
-			addVar(n.Key)
-			addVar(n.Value)
-		case *ast.ForStmt:
-			body = n.Body
-			switch post := n.Post.(type) {
-			case *ast.AssignStmt:
-				// e.g. for p = head; p != nil; p = p.next
-				for _, lhs := range post.Lhs {
-					addVar(lhs)
-				}
-			case *ast.IncDecStmt:
-				// e.g. for i := 0; i < n; i++
-				addVar(post.X)
-			}
-		}
-		if vars == nil {
-			return
-		}
 
-		// Find the variables declared in the loop.
-		var inVars []*ast.Ident
-		addInvar := func(expr ast.Expr) {
-			if id, ok := expr.(*ast.Ident); ok {
-				inVars = append(inVars, id)
-			}
+	inspect.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
+		id, digg := search.Check(n, stack)
+		if id != nil {
+			pass.ReportRangef(id, "taking a pointer for the loop variable %s", id.Name)
 		}
-		// Inspect internal variables
-		ast.Inspect(body, func(n ast.Node) bool {
-			switch typed := n.(type) {
-			case (*ast.DeclStmt):
-				//UNDONE: Var宣言だったらaddInvar
-			case (*ast.AssignStmt):
-				// Find statements declaring internal variable
-				if typed.Tok == token.DEFINE {
-					for _, h := range typed.Lhs {
-						addInvar(h)
-					}
-				}
-			}
-			return true
-		})
-
-		// Inspect assigning a pointer to a loop variable to outer var
-		ast.Inspect(body, func(n ast.Node) bool {
-			assign, ok := n.(*ast.AssignStmt)
-			if !ok || assign.Tok == token.DEFINE {
-				return true
-			}
-
-			// Find expressions to check
-			var checks []ast.Expr
-			if len(assign.Rhs) == 1 {
-				// If the least one left-hand is NOT a variable in the loop,
-				// right-hands may be checked.
-			SEARCH_LHS:
-				for _, lh := range assign.Lhs {
-					leftID, ok := lh.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					for _, v := range inVars {
-						if v.Obj == leftID.Obj {
-							checks = append(checks, assign.Rhs[0])
-							break SEARCH_LHS
-						}
-					}
-				}
-			} else if len(assign.Rhs) == len(assign.Lhs) {
-				// If a left-hand is NOT a variable in the loop,
-				// corresponding right-hand may be checked.
-				for i, lh := range assign.Lhs {
-					leftID, ok := lh.(*ast.Ident)
-					if !ok {
-						continue
-					}
-					for _, v := range inVars {
-						if v.Obj == leftID.Obj {
-							checks = append(checks, assign.Rhs[i])
-						}
-					}
-				}
-			}
-
-			// Find pointer to a loop variable
-			for _, expr := range checks {
-				ast.Inspect(expr, func(n ast.Node) bool {
-					switch typed := n.(type) {
-					case (*ast.CallExpr):
-						// expand append call
-						if typed.Fun.(*ast.Ident).Name == "append" {
-							return true
-						}
-						// UNDONE: case struct member assign
-					case (*ast.UnaryExpr):
-						// find pointer reference
-						// 	if assign.Op != token.AND {
-						// 		return false
-						// 	}
-						// 	id, ok := unary.X.(*ast.Ident)
-						// 	if !ok {
-						// 		return true
-						// 	}
-						// 	if id.Obj == nil {
-						// 		return true
-						// 	}
-						// if pass.TypesInfo.Types[id].Type == nil {
-						// 	// Not referring to a variable (e.g. struct field name)
-						// 	return true
-						// }
-						// for _, v := range vars {
-						// 	if v.Obj == id.Obj {
-						// 		pass.ReportRangef(id, "loop variable %s captured by a pointer", id.Name)
-						// 	}
-						// }
-					}
-					return false
-				})
-			}
-			return true
-		})
+		return digg
 	})
+
 	return nil, nil
+}
+
+type Searcher struct {
+	// statement variables
+	Stats map[token.Pos]struct{}
+	// internal variables
+	Vars map[token.Pos]map[token.Pos]struct{}
+}
+
+func (s *Searcher) Check(n ast.Node, stack []ast.Node) (*ast.Ident, bool) {
+	switch typed := n.(type) {
+	case *ast.RangeStmt:
+		s.parseRangeStmt(typed)
+	case *ast.ForStmt:
+		s.parseForStmt(typed)
+	case *ast.DeclStmt:
+		s.parseDeclStmt(typed, stack)
+	case *ast.AssignStmt:
+		s.parseAssignStmt(typed, stack)
+	case *ast.UnaryExpr:
+		return s.checkUnaryExpr(typed, stack)
+	}
+	return nil, true
+}
+
+func (s *Searcher) parseRangeStmt(n *ast.RangeStmt) {
+	s.addStat(n.Key)
+	s.addStat(n.Value)
+}
+
+func (s *Searcher) parseForStmt(n *ast.ForStmt) {
+	switch post := n.Post.(type) {
+	case *ast.AssignStmt:
+		// e.g. for p = head; p != nil; p = p.next
+		for _, lhs := range post.Lhs {
+			s.addStat(lhs)
+		}
+	case *ast.IncDecStmt:
+		// e.g. for i := 0; i < n; i++
+		s.addStat(post.X)
+	}
+}
+
+func (s *Searcher) addStat(expr ast.Expr) {
+	if id, ok := expr.(*ast.Ident); ok {
+		s.Stats[id.Pos()] = struct{}{}
+	}
+}
+
+func (s *Searcher) parseDeclStmt(n *ast.DeclStmt, stack []ast.Node) {
+	loop := s.innermostLoop(stack)
+	if loop == nil {
+		return
+	}
+
+	// Register declaring variables
+	if genDecl, ok := n.Decl.(*ast.GenDecl); ok && genDecl.Tok == token.VAR {
+		for _, spec := range genDecl.Specs {
+			for _, name := range spec.(*ast.ValueSpec).Names {
+				s.addVar(loop, name)
+			}
+		}
+	}
+}
+
+func (s *Searcher) parseAssignStmt(n *ast.AssignStmt, stack []ast.Node) {
+	loop := s.innermostLoop(stack)
+	if loop == nil {
+		return
+	}
+
+	// Find statements declaring internal variable
+	if n.Tok == token.DEFINE {
+		for _, h := range n.Lhs {
+			s.addVar(loop, h)
+		}
+	}
+}
+
+func (s *Searcher) addVar(loop ast.Node, expr ast.Expr) {
+	loopPos := loop.Pos()
+	id, ok := expr.(*ast.Ident)
+	if !ok {
+		return
+	}
+	vars, ok := s.Vars[loopPos]
+	if !ok {
+		vars = map[token.Pos]struct{}{}
+	}
+	vars[id.Obj.Pos()] = struct{}{}
+	s.Vars[loopPos] = vars
+}
+
+func (s *Searcher) innermostLoop(stack []ast.Node) ast.Node {
+	for i := len(stack) - 1; i >= 0; i-- {
+		switch stack[i].(type) {
+		case *ast.RangeStmt, *ast.ForStmt:
+			return stack[i]
+		}
+	}
+	return nil
+}
+
+func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (*ast.Ident, bool) {
+	loop := s.innermostLoop(stack)
+	if loop == nil {
+		return nil, true
+	}
+
+	if n.Op != token.AND {
+		return nil, true
+	}
+
+	// Get identity of the referred item
+	id := getIdentity(n.X)
+	if id == nil {
+		return nil, true
+	}
+
+	// If the identity is not the loop statement variable,
+	// it will not be reported.
+	if _, isStat := s.Stats[id.Obj.Pos()]; !isStat {
+		return nil, true
+	}
+
+	// check stack append(), []X{}, map[Type]X{}, Struct{}, &Struct{}, X.(Type), (X)
+	// in the <outer> =
+	var mayRHPos token.Pos
+	for i := len(stack) - 2; i >= 0; i-- {
+		switch typed := stack[i].(type) {
+		case (*ast.UnaryExpr):
+			// noop
+		case (*ast.CompositeLit):
+			// noop
+		case (*ast.KeyValueExpr):
+			// noop
+		case (*ast.CallExpr):
+			fun, ok := typed.Fun.(*ast.Ident)
+			if !ok {
+				return nil, false // it's calling a function other of `append`. It cannot be checked
+			}
+
+			if fun.Name != "append" {
+				return nil, false // it's calling a function other of `append`. It cannot be checked
+			}
+
+		case (*ast.AssignStmt):
+			if len(typed.Rhs) != len(typed.Lhs) {
+				return nil, false // dead logic
+			}
+
+			// search x where Rhs[x].Pos() == mayRHPos
+			var index int
+			for ri, rh := range typed.Rhs {
+				if rh.Pos() == mayRHPos {
+					index = ri
+					break
+				}
+			}
+
+			// check Lhs[x] is not inner variable
+			lh := typed.Lhs[index]
+			isVar := s.isVar(loop, lh)
+			if !isVar {
+				return id, false
+			}
+
+			return nil, true
+		default:
+			// Other statement is not able to be checked.
+			return nil, false
+		}
+
+		// memory an expr that may be right-hand in the AssignStmt
+		mayRHPos = stack[i].Pos()
+	}
+	return nil, true
+}
+
+func (s *Searcher) isVar(loop ast.Node, expr ast.Expr) bool {
+	vars := s.Vars[loop.Pos()] // map[token.Pos]struct{}
+	if vars == nil {
+		return false
+	}
+	switch typed := expr.(type) {
+	case (*ast.Ident):
+		_, isVar := vars[typed.Obj.Pos()]
+		return isVar
+	case (*ast.IndexExpr): // like X[Y], check X
+		return s.isVar(loop, typed.X)
+	case (*ast.SelectorExpr): // like X.Y, check X
+		return s.isVar(loop, typed.X)
+	}
+	return false
+}
+
+// Get variable identity
+func getIdentity(expr ast.Expr) *ast.Ident {
+	switch typed := expr.(type) {
+	case *ast.SelectorExpr:
+		// Get parent identity; i.e. `a` of the `a.b`.
+		parent, ok := typed.X.(*ast.Ident)
+		if !ok {
+			return nil
+		}
+		// NOTE: If that is descendants member like `a.b.c`,
+		//       typed.X will be `*ast.SelectorExpr`.
+		return parent
+
+	case *ast.Ident:
+		// Get simple identity; i.e. `a` of the `a`.
+		if typed.Obj == nil {
+			return nil
+		}
+		return typed
+	}
+	return nil
 }
