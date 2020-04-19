@@ -84,8 +84,22 @@ you should use [exportloopref](https://github.com/kyoh86/exportloopref).
 
 ## Install
 
+go:
+
+```console
+$ go get github.com/kyoh86/looppointer
 ```
-go get github.com/kyoh86/looppointer
+
+[homebrew](https://brew.sh/):
+
+```console
+$ brew install kyoh86/tap/looppointer
+```
+
+[gordon](https://github.com/kyoh86/gordon):
+
+```console
+$ gordon install kyoh86/looppointer
 ```
 
 ## Usage
