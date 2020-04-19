@@ -39,6 +39,5 @@ archives:
   - README*
   - changelog*
   - CHANGELOG*
-  - looppointer.1
 snapshot:
   name_template: SNAPSHOT-{{ .Commit }}
