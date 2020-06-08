@@ -87,7 +87,7 @@ you should use [exportloopref](https://github.com/kyoh86/exportloopref).
 go:
 
 ```console
-$ go get github.com/kyoh86/looppointer
+$ go get github.com/kyoh86/looppointer/cmd/looppointer
 ```
 
 [homebrew](https://brew.sh/):
