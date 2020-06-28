@@ -65,7 +65,7 @@ ref: https://github.com/kyoh86/looppointer/blob/master/testdata/fixed/fixed.go
 ## Sensing policy
 
 I want to make looppointer as nervous as possible.
-So many false-positves will be reported.
+So some false-positves will be reported.
 
 e.g.
 
@@ -74,6 +74,20 @@ func TestSample(t *testing.T) {
   for _, p := []int{10, 11, 12, 13} {
     t.Run(func(t *testing.T) {
       s = &p // t.Run always called instantly, so it will not be bug.
+      ...
+    })
+  }
+}
+```
+
+They can be escaped with pining-variable:
+
+```go
+func TestSample(t *testing.T) {
+  for _, p := []int{10, 11, 12, 13} {
+    p := p // pin a variable to local in the loop
+    t.Run(func(t *testing.T) {
+      s = &p
       ...
     })
   }
