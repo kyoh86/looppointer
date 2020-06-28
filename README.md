@@ -80,6 +80,20 @@ func TestSample(t *testing.T) {
 }
 ```
 
+They can be escaped with pining-variable:
+
+```go
+func TestSample(t *testing.T) {
+  for _, p := []int{10, 11, 12, 13} {
+    p := p // pin a variable to local in the loop
+    t.Run(func(t *testing.T) {
+      s = &p
+      ...
+    })
+  }
+}
+```
+
 If you want to ignore false-positives (with some lints ignored),
 you should use [exportloopref](https://github.com/kyoh86/exportloopref).
 
