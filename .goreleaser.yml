@@ -13,16 +13,29 @@ brews:
   homepage: https://github.com/kyoh86/looppointer
   description: An analyzer that checks for pointers to enclosing loop variables.
 builds:
-- goos:
-  - linux
-  - darwin
-  - windows
-  goarch:
-  - amd64
-  - "386"
-  main: ./cmd/looppointer
-  ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-  binary: looppointer
+  - id: main
+    goos:
+    - linux
+    - darwin
+    - windows
+    goarch:
+    - amd64
+    - "386"
+    main: ./cmd/looppointer
+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    binary: looppointer
+  - id: plugin
+    main: ./plugin
+    flags:
+      - buildmode=plugin
+    binary: looppointer.so
+    goos:
+    - linux
+    - darwin
+    - windows
+    goarch:
+    - amd64
+    - "386"
 archives:
 - id: gzip
   format: tar.gz
