@@ -9,7 +9,7 @@ gen:
 lint: gen
 	golangci-lint run
 
-test: lint
+test: gen
 	go test -v --race ./...
 
 install: test
