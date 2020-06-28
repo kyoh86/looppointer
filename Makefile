@@ -14,3 +14,6 @@ test: lint
 
 install: test
 	go install -a -ldflags "-X=main.version=$(VERSION) -X=main.commit=$(COMMIT)" ./...
+
+plugin: test
+	go build -o looppointer.so -buildmode=plugin ./plugin
