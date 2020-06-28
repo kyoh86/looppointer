@@ -3,6 +3,7 @@ release:
   github:
     owner: kyoh86
     name: looppointer
+
 brews:
 - install: |
     bin.install "looppointer"
@@ -12,17 +13,19 @@ brews:
   folder: Formula
   homepage: https://github.com/kyoh86/looppointer
   description: An analyzer that checks for pointers to enclosing loop variables.
+
 builds:
-- goos:
-  - linux
-  - darwin
-  - windows
-  goarch:
-  - amd64
-  - "386"
-  main: ./cmd/looppointer
-  ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-  binary: looppointer
+  - goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - "386"
+    main: ./cmd/looppointer
+    ldflags: -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    binary: looppointer
+
 archives:
 - id: gzip
   format: tar.gz
