@@ -2,3 +2,10 @@ linters:
   enable:
     - unparam
     - scopelint
+
+linters-settings:
+  custom:
+    looppointer:
+      path: ./looppointer.so
+      description: An analyzer that finds pointers for loop variables.
+      original-url: github.com/kyoh86/looppointer

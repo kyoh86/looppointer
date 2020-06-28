@@ -8,8 +8,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-func main() {} // goreleaser needs main function
-
 type analyzerPlugin struct{}
 
 // This must be implemented
