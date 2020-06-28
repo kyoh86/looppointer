@@ -27,7 +27,7 @@ builds:
   - id: plugin
     main: ./plugin
     flags:
-      - buildmode=plugin
+      - -buildmode=plugin
     binary: looppointer.so
     goos:
     - linux
