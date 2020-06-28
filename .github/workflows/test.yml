@@ -49,6 +49,7 @@ jobs:
 
   release-test:
     runs-on: ubuntu-latest
+    needs: vendor
     steps:
       - uses: actions/setup-go@v2
         with:
