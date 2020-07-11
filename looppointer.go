@@ -1,6 +1,7 @@
 package looppointer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 
@@ -39,7 +40,8 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	inspect.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
 		id, digg := search.Check(n, stack)
 		if id != nil {
-			pass.ReportRangef(id, "taking a pointer for the loop variable %s", id.Name)
+			msg := fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
+			pass.Report(analysis.Diagnostic{Pos: id.Pos(), End: id.End(), Message: msg, Category: "looppointer"})
 		}
 		return digg
 	})
