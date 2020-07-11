@@ -45,7 +45,7 @@ func main() {
 
 	println("loop expecting 10, 11, 12, 13")
 	for i, p := range []int{10, 11, 12, 13} {
-    p := p                          // FIX variable into the inner variable
+    p := p                          // FIX variable into the local variable
 		intSlice = append(intSlice, &p) 
 	}
 
