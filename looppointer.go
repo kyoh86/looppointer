@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/kyoh86/nolint"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
@@ -15,7 +16,7 @@ var Analyzer = &analysis.Analyzer{
 	Doc:              "checks for pointers to enclosing loop variables",
 	Run:              run,
 	RunDespiteErrors: true,
-	Requires:         []*analysis.Analyzer{inspect.Analyzer},
+	Requires:         []*analysis.Analyzer{inspect.Analyzer, nolint.Analyzer},
 	// ResultType reflect.Type
 	// FactTypes []Fact
 }
@@ -26,6 +27,7 @@ func init() {
 
 func run(pass *analysis.Pass) (interface{}, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	noLinter := pass.ResultOf[nolint.Analyzer].(*nolint.NoLinter)
 
 	search := &Searcher{
 		Stats: map[token.Pos]struct{}{},
@@ -39,9 +41,14 @@ func run(pass *analysis.Pass) (interface{}, error) {
 
 	inspect.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
 		id, digg := search.Check(n, stack)
-		if id != nil {
+		if id != nil && !noLinter.IgnoreNode(id, "looppointer") {
 			msg := fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
-			pass.Report(analysis.Diagnostic{Pos: id.Pos(), End: id.End(), Message: msg, Category: "looppointer"})
+			pass.Report(analysis.Diagnostic{
+				Pos:      id.Pos(),
+				End:      id.End(),
+				Message:  msg,
+				Category: "looppointer",
+			})
 		}
 		return digg
 	})

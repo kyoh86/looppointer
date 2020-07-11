@@ -11,4 +11,5 @@ func Test(t *testing.T) {
 	testdata := analysistest.TestData()
 	analysistest.Run(t, testdata, looppointer.Analyzer, "simple")
 	analysistest.Run(t, testdata, looppointer.Analyzer, "fixed")
+	analysistest.Run(t, testdata, looppointer.Analyzer, "nolint")
 }

@@ -97,6 +97,22 @@ func TestSample(t *testing.T) {
 If you want to ignore false-positives (with some lints ignored),
 you should use [exportloopref](https://github.com/kyoh86/exportloopref).
 
+## Nolint
+
+Diagnostics by `looppointer` can be suppress with the line comment `// nolint:looppointer`.
+
+```go
+func TestSample(t *testing.T) {
+  for _, p := []int{10, 11, 12, 13} {
+    t.Run(func(t *testing.T) {
+      s = &p // nolint
+      ...
+    })
+  }
+}
+```
+
+
 ## Install
 
 go:
