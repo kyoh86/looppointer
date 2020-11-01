@@ -2,6 +2,7 @@
 
 An analyzer that finds pointers for loop variables.
 
+[![PkgGoDev](https://pkg.go.dev/badge/kyoh86/looppointer)](https://pkg.go.dev/kyoh86/looppointer)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kyoh86/looppointer)](https://goreportcard.com/report/github.com/kyoh86/looppointer)
 [![Coverage Status](https://img.shields.io/codecov/c/github/kyoh86/looppointer.svg)](https://codecov.io/gh/kyoh86/looppointer)
 [![Release](https://github.com/kyoh86/looppointer/workflows/Release/badge.svg)](https://github.com/kyoh86/looppointer/releases)
