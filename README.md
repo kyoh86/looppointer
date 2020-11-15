@@ -9,7 +9,7 @@ An analyzer that finds pointers for loop variables.
 
 ## What's this?
 
-Sample problem code from: https://github.com/kyoh86/looppointer/blob/master/testdata/simple/simple.go
+Sample problem code from: https://github.com/kyoh86/looppointer/blob/main/testdata/simple/simple.go
 
 ```go
 package main
@@ -61,7 +61,7 @@ func printp(p *int) {
 }
 ```
 
-ref: https://github.com/kyoh86/looppointer/blob/master/testdata/fixed/fixed.go
+ref: https://github.com/kyoh86/looppointer/blob/main/testdata/fixed/fixed.go
 
 ## Sensing policy
 
