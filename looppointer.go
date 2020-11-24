@@ -141,7 +141,7 @@ func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (*ast.Iden
 
 	// Get identity of the referred item
 	id := getIdentity(n.X)
-	if id == nil {
+	if id == nil || id.Obj == nil {
 		return nil, token.NoPos, true
 	}
 
