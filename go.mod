@@ -3,6 +3,7 @@ module github.com/kyoh86/looppointer
 go 1.14
 
 require (
-	github.com/kyoh86/nolint v0.0.0-20200711045849-7a7b0d649b7a
-	golang.org/x/tools v0.0.0-20200710042808-f1c4188a97a1
+	github.com/kyoh86/nolint v0.0.1
+	golang.org/x/sys v0.0.0-20220224003255-dbe011f71a99 // indirect
+	golang.org/x/tools v0.1.9
 )
