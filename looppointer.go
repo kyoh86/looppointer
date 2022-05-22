@@ -25,6 +25,27 @@ func init() {
 	//	Analyzer.Flags.StringVar(&v, "name", "default", "description")
 }
 
+type messagesFormats struct {
+	dMsgFormat string
+	fMsgFormat string
+}
+
+const (
+	loopPointer   = "looppointer"
+	funcReference = "func-reference"
+)
+
+var detectionTypeToMessageFormats = map[string]messagesFormats{
+	loopPointer: {
+		"taking a pointer for the loop variable %s",
+		"loop variable %s should be pinned",
+	},
+	funcReference: {
+		"using loop variable in function literal %s",
+		"loop variable %s should be pinned",
+	},
+}
+
 func run(pass *analysis.Pass) (interface{}, error) {
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	noLinter := pass.ResultOf[nolint.Analyzer].(*nolint.NoLinter)
@@ -37,13 +58,14 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		(*ast.RangeStmt)(nil),
 		(*ast.ForStmt)(nil),
 		(*ast.UnaryExpr)(nil),
+		(*ast.Ident)(nil),
 	}
 
 	inspect.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
-		id, insert, digg := search.Check(n, stack)
+		issueType, id, insert, digg := search.Check(n, stack)
 		if id != nil && !noLinter.IgnoreNode(id, "looppointer") {
-			dMsg := fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
-			fMsg := fmt.Sprintf("loop variable %s should be pinned", id.Name)
+			dMsg := fmt.Sprintf(detectionTypeToMessageFormats[issueType].dMsgFormat, id.Name)
+			fMsg := fmt.Sprintf(detectionTypeToMessageFormats[issueType].fMsgFormat, id.Name)
 			var suggest []analysis.SuggestedFix
 			if insert != token.NoPos {
 				suggest = []analysis.SuggestedFix{{
@@ -74,7 +96,7 @@ type Searcher struct {
 	Stats map[token.Pos]struct{}
 }
 
-func (s *Searcher) Check(n ast.Node, stack []ast.Node) (*ast.Ident, token.Pos, bool) {
+func (s *Searcher) Check(n ast.Node, stack []ast.Node) (string, *ast.Ident, token.Pos, bool) {
 	switch typed := n.(type) {
 	case *ast.RangeStmt:
 		s.parseRangeStmt(typed)
@@ -82,8 +104,10 @@ func (s *Searcher) Check(n ast.Node, stack []ast.Node) (*ast.Ident, token.Pos, b
 		s.parseForStmt(typed)
 	case *ast.UnaryExpr:
 		return s.checkUnaryExpr(typed, stack)
+	case *ast.Ident:
+		return s.checkIdent(typed, stack)
 	}
-	return nil, token.NoPos, true
+	return "", nil, token.NoPos, true
 }
 
 func (s *Searcher) parseRangeStmt(n *ast.RangeStmt) {
@@ -129,29 +153,58 @@ func (s *Searcher) innermostLoop(stack []ast.Node) (ast.Node, token.Pos) {
 	return nil, token.NoPos
 }
 
-func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (*ast.Ident, token.Pos, bool) {
+func (s *Searcher) checkIdent(n *ast.Ident, stack []ast.Node) (string, *ast.Ident, token.Pos, bool) {
+	// Get identity of the referred item
+	id := getIdentity(n)
+	if id == nil || id.Obj == nil {
+		return "", nil, token.NoPos, true
+	}
+
+	if _, isStat := s.Stats[id.Obj.Pos()]; isStat {
+
+		// Find any function literals in the stack above
+		for i := len(stack) - 1; i >= 0; i-- {
+			stackNode := stack[i]
+
+			if fl, ok := stackNode.(*ast.FuncLit); ok {
+				// If this is a usage within a function literal, but the variable was declared in this function literal
+				// then there's no issue.
+				if n.Obj.Pos() > fl.Pos() && n.Obj.Pos() < fl.End() {
+					return "", nil, n.Pos(), true
+				}
+
+				return funcReference, n, n.Pos(), false
+			}
+		}
+
+	}
+
+	return "", nil, n.Pos(), true
+}
+
+func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (string, *ast.Ident, token.Pos, bool) {
 	loop, insert := s.innermostLoop(stack)
 	if loop == nil {
-		return nil, token.NoPos, true
+		return "", nil, token.NoPos, true
 	}
 
 	if n.Op != token.AND {
-		return nil, token.NoPos, true
+		return "", nil, token.NoPos, true
 	}
 
 	// Get identity of the referred item
 	id := getIdentity(n.X)
 	if id == nil || id.Obj == nil {
-		return nil, token.NoPos, true
+		return "", nil, token.NoPos, true
 	}
 
 	// If the identity is not the loop statement variable,
 	// it will not be reported.
 	if _, isStat := s.Stats[id.Obj.Pos()]; !isStat {
-		return nil, token.NoPos, true
+		return "", nil, token.NoPos, true
 	}
 
-	return id, insert, false
+	return loopPointer, id, insert, false
 }
 
 // Get variable identity
