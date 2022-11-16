@@ -37,32 +37,45 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		(*ast.RangeStmt)(nil),
 		(*ast.ForStmt)(nil),
 		(*ast.UnaryExpr)(nil),
+		(*ast.SliceExpr)(nil),
 	}
 
-	inspect.WithStack(nodeFilter, func(n ast.Node, push bool, stack []ast.Node) bool {
-		id, insert, digg := search.Check(n, stack)
-		if id != nil && !noLinter.IgnoreNode(id, "looppointer") {
-			dMsg := fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
-			fMsg := fmt.Sprintf("loop variable %s should be pinned", id.Name)
-			var suggest []analysis.SuggestedFix
-			if insert != token.NoPos {
-				suggest = []analysis.SuggestedFix{{
-					Message: fMsg,
-					TextEdits: []analysis.TextEdit{{
-						Pos:     insert,
-						End:     insert,
-						NewText: []byte(fmt.Sprintf("%[1]s := %[1]s\n", id.Name)),
-					}},
-				}}
-			}
-			pass.Report(analysis.Diagnostic{
-				Pos:            id.Pos(),
-				End:            id.End(),
-				Message:        dMsg,
-				Category:       "looppointer",
-				SuggestedFixes: suggest,
-			})
+	inspect.WithStack(nodeFilter, func(n ast.Node, _ bool, stack []ast.Node) bool {
+		typ, id, insert, digg := search.Check(n, stack)
+		if typ == RefTypeNone {
+			return digg
 		}
+		if noLinter.IgnoreNode(id, "looppointer") {
+			return digg
+		}
+		var dMsg string
+		switch typ {
+		case RefTypePointer:
+			dMsg = fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
+		case RefTypeSlice:
+			dMsg = fmt.Sprintf("taking a ref for the slice from loop variable %s", id.Name)
+		default:
+			return digg
+		}
+		fMsg := fmt.Sprintf("loop variable %s should be pinned", id.Name)
+		var suggest []analysis.SuggestedFix
+		if insert != token.NoPos {
+			suggest = []analysis.SuggestedFix{{
+				Message: fMsg,
+				TextEdits: []analysis.TextEdit{{
+					Pos:     insert,
+					End:     insert,
+					NewText: []byte(fmt.Sprintf("%[1]s := %[1]s\n", id.Name)),
+				}},
+			}}
+		}
+		pass.Report(analysis.Diagnostic{
+			Pos:            id.Pos(),
+			End:            id.End(),
+			Message:        dMsg,
+			Category:       "looppointer",
+			SuggestedFixes: suggest,
+		})
 		return digg
 	})
 
@@ -74,7 +87,15 @@ type Searcher struct {
 	Stats map[token.Pos]struct{}
 }
 
-func (s *Searcher) Check(n ast.Node, stack []ast.Node) (*ast.Ident, token.Pos, bool) {
+type RefType int
+
+const (
+	RefTypeNone RefType = iota
+	RefTypePointer
+	RefTypeSlice
+)
+
+func (s *Searcher) Check(n ast.Node, stack []ast.Node) (RefType, *ast.Ident, token.Pos, bool) {
 	switch typed := n.(type) {
 	case *ast.RangeStmt:
 		s.parseRangeStmt(typed)
@@ -82,8 +103,10 @@ func (s *Searcher) Check(n ast.Node, stack []ast.Node) (*ast.Ident, token.Pos, b
 		s.parseForStmt(typed)
 	case *ast.UnaryExpr:
 		return s.checkUnaryExpr(typed, stack)
+	case *ast.SliceExpr:
+		return s.checkSliceExpr(typed, stack)
 	}
-	return nil, token.NoPos, true
+	return RefTypeNone, nil, token.NoPos, true
 }
 
 func (s *Searcher) parseRangeStmt(n *ast.RangeStmt) {
@@ -129,29 +152,50 @@ func (s *Searcher) innermostLoop(stack []ast.Node) (ast.Node, token.Pos) {
 	return nil, token.NoPos
 }
 
-func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (*ast.Ident, token.Pos, bool) {
+func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (RefType, *ast.Ident, token.Pos, bool) {
 	loop, insert := s.innermostLoop(stack)
 	if loop == nil {
-		return nil, token.NoPos, true
+		return RefTypeNone, nil, token.NoPos, true
 	}
 
 	if n.Op != token.AND {
-		return nil, token.NoPos, true
+		return RefTypeNone, nil, token.NoPos, true
 	}
 
 	// Get identity of the referred item
 	id := getIdentity(n.X)
 	if id == nil || id.Obj == nil {
-		return nil, token.NoPos, true
+		return RefTypeNone, nil, token.NoPos, true
 	}
 
 	// If the identity is not the loop statement variable,
 	// it will not be reported.
 	if _, isStat := s.Stats[id.Obj.Pos()]; !isStat {
-		return nil, token.NoPos, true
+		return RefTypeNone, nil, token.NoPos, true
 	}
 
-	return id, insert, false
+	return RefTypePointer, id, insert, false
+}
+
+func (s *Searcher) checkSliceExpr(n *ast.SliceExpr, stack []ast.Node) (RefType, *ast.Ident, token.Pos, bool) {
+	loop, insert := s.innermostLoop(stack)
+	if loop == nil {
+		return RefTypeNone, nil, token.NoPos, true
+	}
+
+	// Get identity of the referred item
+	id := getIdentity(n.X)
+	if id == nil || id.Obj == nil {
+		return RefTypeNone, nil, token.NoPos, true
+	}
+
+	// If the identity is not the loop statement variable,
+	// it will not be reported.
+	if _, isStat := s.Stats[id.Obj.Pos()]; !isStat {
+		return RefTypeNone, nil, token.NoPos, true
+	}
+
+	return RefTypeSlice, id, insert, false
 }
 
 // Get variable identity
