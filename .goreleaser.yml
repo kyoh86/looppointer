@@ -1,3 +1,18 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+project_name: looppointer
+builds:
+  - id: default
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+    main: ./cmd/looppointer
+    binary: looppointer
 brews:
   - install: |
       bin.install "looppointer"
@@ -7,20 +22,18 @@ brews:
     folder: Formula
     homepage: https://github.com/kyoh86/looppointer
     description: An analyzer that checks for pointers to enclosing loop variables.
-builds:
-  - goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm
-      - arm64
-      - "386"
-    main: ./cmd/looppointer
-    hooks:
-      post:
-        - go get github.com/kyoh86/git-vertag
+    license: MIT
+nfpms:
+  - builds:
+      - default
+    maintainer: kyoh86 <me@kyoh86.dev>
+    homepage: https://github.com/kyoh86/looppointer
+    description: An analyzer that checks for pointers to enclosing loop variables.
+    license: MIT
+    formats:
+      - apk
+      - deb
+      - rpm
 archives:
   - id: gzip
     format: tar.gz
