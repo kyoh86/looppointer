@@ -196,6 +196,11 @@ func (s *Searcher) checkSliceExpr(n *ast.SliceExpr, stack []ast.Node, astTypes m
 		return RefTypeNone, nil, token.NoPos, true
 	}
 
+	idType, clearType := astTypes[id]
+	if clearType && idType.Type.Underlying().String() == "string" {
+		return RefTypeNone, nil, token.NoPos, true
+	}
+
 	return RefTypeSlice, id, insert, false
 }
 
