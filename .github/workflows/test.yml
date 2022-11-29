@@ -53,13 +53,6 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: v1.50
-      - name: Take coverage
-        run: go test -coverprofile=coverage.txt -covermode=atomic ./...
-      - name: Send coverage
-        uses: codecov/codecov-action@v3
-        with:
-          fail_ci_if_error: true
-          files: coverage.txt
   test-status:
     name: Test status
     runs-on: ubuntu-latest
