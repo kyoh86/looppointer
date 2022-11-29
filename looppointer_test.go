@@ -15,4 +15,5 @@ func Test(t *testing.T) {
 	analysistest.Run(t, testdata, looppointer.Analyzer, "nolint")
 	analysistest.Run(t, testdata, looppointer.Analyzer, "nested")
 	analysistest.Run(t, testdata, looppointer.Analyzer, "slice")
+	analysistest.Run(t, testdata, looppointer.Analyzer, "strslice")
 }

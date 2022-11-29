@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 
 	"github.com/kyoh86/nolint"
 	"golang.org/x/tools/go/analysis"
@@ -41,15 +42,15 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	}
 
 	inspect.WithStack(nodeFilter, func(n ast.Node, _ bool, stack []ast.Node) bool {
-		typ, id, insert, digg := search.Check(n, stack)
-		if typ == RefTypeNone {
+		refType, id, insert, digg := search.Check(n, stack, pass.TypesInfo.Types)
+		if refType == RefTypeNone {
 			return digg
 		}
 		if noLinter.IgnoreNode(id, "looppointer") {
 			return digg
 		}
 		var dMsg string
-		switch typ {
+		switch refType {
 		case RefTypePointer:
 			dMsg = fmt.Sprintf("taking a pointer for the loop variable %s", id.Name)
 		case RefTypeSlice:
@@ -95,7 +96,7 @@ const (
 	RefTypeSlice
 )
 
-func (s *Searcher) Check(n ast.Node, stack []ast.Node) (RefType, *ast.Ident, token.Pos, bool) {
+func (s *Searcher) Check(n ast.Node, stack []ast.Node, astTypes map[ast.Expr]types.TypeAndValue) (RefType, *ast.Ident, token.Pos, bool) {
 	switch typed := n.(type) {
 	case *ast.RangeStmt:
 		s.parseRangeStmt(typed)
@@ -104,7 +105,7 @@ func (s *Searcher) Check(n ast.Node, stack []ast.Node) (RefType, *ast.Ident, tok
 	case *ast.UnaryExpr:
 		return s.checkUnaryExpr(typed, stack)
 	case *ast.SliceExpr:
-		return s.checkSliceExpr(typed, stack)
+		return s.checkSliceExpr(typed, stack, astTypes)
 	}
 	return RefTypeNone, nil, token.NoPos, true
 }
@@ -177,7 +178,7 @@ func (s *Searcher) checkUnaryExpr(n *ast.UnaryExpr, stack []ast.Node) (RefType, 
 	return RefTypePointer, id, insert, false
 }
 
-func (s *Searcher) checkSliceExpr(n *ast.SliceExpr, stack []ast.Node) (RefType, *ast.Ident, token.Pos, bool) {
+func (s *Searcher) checkSliceExpr(n *ast.SliceExpr, stack []ast.Node, astTypes map[ast.Expr]types.TypeAndValue) (RefType, *ast.Ident, token.Pos, bool) {
 	loop, insert := s.innermostLoop(stack)
 	if loop == nil {
 		return RefTypeNone, nil, token.NoPos, true
@@ -192,6 +193,11 @@ func (s *Searcher) checkSliceExpr(n *ast.SliceExpr, stack []ast.Node) (RefType, 
 	// If the identity is not the loop statement variable,
 	// it will not be reported.
 	if _, isStat := s.Stats[id.Obj.Pos()]; !isStat {
+		return RefTypeNone, nil, token.NoPos, true
+	}
+
+	idType, clearType := astTypes[id]
+	if clearType && idType.Type.Underlying().String() == "string" {
 		return RefTypeNone, nil, token.NoPos, true
 	}
 
