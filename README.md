@@ -119,7 +119,7 @@ func TestSample(t *testing.T) {
 go:
 
 ```console
-$ go get github.com/kyoh86/looppointer/cmd/looppointer
+$ go install github.com/kyoh86/looppointer/cmd/looppointer@latest
 ```
 
 [homebrew](https://brew.sh/):
